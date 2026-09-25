@@ -119,16 +119,32 @@ export class AuthService {
     if (!claims) return null;
 
     const user = await this.users.findById(claims.sub);
-    if (!user || user.status === 'suspended') return null;
+
+    // Prefer DB user when present. If the user row is missing (e.g. in-memory
+    // Mongo after a restart) still surface the signed JWT identity so the UI
+    // never falls back to demo seed names.
+    if (user && user.status !== 'suspended') {
+      return {
+        id: String(user._id),
+        email: user.email,
+        displayName: user.displayName || claims.name || user.email,
+        avatarUrl: user.avatarUrl,
+        workspaceTierCode: user.workspaceTierCode,
+        role: user.role,
+        status: user.status,
+      };
+    }
+
+    if (!claims.email && !claims.name) return null;
 
     return {
-      id: String(user._id),
-      email: user.email,
-      displayName: user.displayName || claims.name || user.email,
-      avatarUrl: user.avatarUrl,
-      workspaceTierCode: user.workspaceTierCode,
-      role: user.role,
-      status: user.status,
+      id: claims.sub,
+      email: claims.email || '',
+      displayName: claims.name || claims.email || 'Operator',
+      avatarUrl: undefined as string | undefined,
+      workspaceTierCode: claims.tier || '',
+      role: 'operator',
+      status: 'active',
     };
   }
 

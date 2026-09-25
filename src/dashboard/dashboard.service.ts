@@ -123,19 +123,42 @@ export class DashboardService {
       throw new BadRequestException('Please refresh and try again.');
     }
 
-    let workspace = await this.workspaceModel.findOne({ workspaceKey: key });
-    if (!workspace) {
-      workspace = await this.workspaceModel.create({
-        workspaceKey: key,
-        setupComplete: false,
-        completedStepsCsv: '',
-        currentStepCode: 'welcome',
-        facilityName: '',
-        facilityLocation: '',
-        workspaceTierCode: tierCode?.toLowerCase() ?? '',
-      });
+    try {
+      const workspace = await this.workspaceModel.findOneAndUpdate(
+        { workspaceKey: key },
+        {
+          $setOnInsert: {
+            workspaceKey: key,
+            setupComplete: false,
+            completedStepsCsv: '',
+            currentStepCode: 'welcome',
+            facilityName: '',
+            facilityLocation: '',
+            locationLabel: '',
+            ownerDisplayName: '',
+            workspaceTierCode: tierCode?.toLowerCase() ?? '',
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
+      if (!workspace) {
+        throw new BadRequestException('Please refresh and try again.');
+      }
+      return workspace;
+    } catch (err) {
+      // Concurrent overview polls can race on first create — recover by re-read.
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? (err as { code?: number }).code
+          : undefined;
+      if (code === 11000) {
+        const existing = await this.workspaceModel.findOne({
+          workspaceKey: key,
+        });
+        if (existing) return existing;
+      }
+      throw err;
     }
-    return workspace;
   }
 
   async getOverview(
@@ -262,7 +285,7 @@ export class DashboardService {
     const socLabel = facility || (copy.socLabel ?? 'PENDING');
     const geoLabel =
       geo || (copy.geoLabel ?? 'Pick a site on the map to continue');
-    const operatorName = displayName || (copy.operatorName ?? 'Operator');
+    const operatorName = displayName || 'Operator';
     const operatorMeta =
       email || (copy.operatorMeta ?? 'Complete setup to activate clearance');
 
@@ -374,9 +397,8 @@ export class DashboardService {
       workspace,
       operator,
     );
-    const operatorName =
-      displayName || template?.operatorName || 'Operator';
-    const operatorMeta = email || template?.operatorMeta || '';
+    const operatorName = displayName || 'Operator';
+    const operatorMeta = email || '';
     const sectorFromFacility = workspace.facilityName?.trim()
       ? `SECTOR: ${workspace.facilityName.trim().toUpperCase()}`
       : template.sectorLabel;
