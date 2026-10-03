@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from '../auth/auth.module';
+import { UsersModule } from '../users/users.module';
 import { CmsCopy, CmsCopySchema } from '../cms/schemas/cms-copy.schema';
 import { DashboardController } from './dashboard.controller';
 import { DashboardSeedService } from './dashboard-seed.service';
@@ -48,7 +49,7 @@ const models = [
 ];
 
 @Module({
-  imports: [AuthModule, MongooseModule.forFeature(models)],
+  imports: [AuthModule, UsersModule, MongooseModule.forFeature(models)],
   controllers: [DashboardController],
   providers: [DashboardService, DashboardSeedService],
   exports: [DashboardService, DashboardSeedService],

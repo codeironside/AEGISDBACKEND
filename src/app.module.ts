@@ -11,16 +11,14 @@ import { LandingModule } from './landing/landing.module';
 import { FeedsModule } from './feeds/feeds.module';
 import { HealthModule } from './health/health.module';
 import { UsersModule } from './users/users.module';
+import { SitesModule } from './sites/sites.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
-      envFilePath: [
-        `.env.${process.env.NODE_ENV || 'development'}`,
-        '.env',
-      ],
+      envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
     }),
     MongooseModule.forRootAsync({
       inject: [ConfigService],
@@ -41,6 +39,7 @@ import { UsersModule } from './users/users.module';
     FeedsModule,
     UsersModule,
     AuthModule,
+    SitesModule,
   ],
 })
 export class AppModule implements NestModule {

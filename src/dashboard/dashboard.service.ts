@@ -36,6 +36,7 @@ import {
 } from './schemas/getting-started-step.schema';
 import { Workspace, WorkspaceDocument } from './schemas/workspace.schema';
 import { AdvanceSetupDto } from './dto/advance-setup.dto';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class DashboardService {
@@ -58,6 +59,7 @@ export class DashboardService {
     private readonly workspaceModel: Model<WorkspaceDocument>,
     @InjectModel(CmsCopy.name)
     private readonly copyModel: Model<CmsCopyDocument>,
+    private readonly usersService: UsersService,
   ) {}
 
   private async getCopy(pageKey: string, locale = 'en') {
@@ -109,11 +111,8 @@ export class DashboardService {
     } | null,
   ) {
     const displayName =
-      operator?.displayName?.trim() ||
-      workspace.ownerDisplayName?.trim() ||
-      '';
-    const email =
-      operator?.email?.trim() || workspace.ownerEmail?.trim() || '';
+      operator?.displayName?.trim() || workspace.ownerDisplayName?.trim() || '';
+    const email = operator?.email?.trim() || workspace.ownerEmail?.trim() || '';
     return { displayName, email };
   }
 
@@ -139,7 +138,11 @@ export class DashboardService {
             workspaceTierCode: tierCode?.toLowerCase() ?? '',
           },
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
+        {
+          upsert: true,
+          returnDocument: 'after',
+          setDefaultsOnInsert: true,
+        },
       );
       if (!workspace) {
         throw new BadRequestException('Please refresh and try again.');
@@ -181,10 +184,7 @@ export class DashboardService {
     if (options?.operator) {
       workspace.ownerEmail = options.operator.email;
       workspace.ownerDisplayName = options.operator.displayName;
-      if (
-        options.operator.workspaceTierCode &&
-        !workspace.workspaceTierCode
-      ) {
+      if (options.operator.workspaceTierCode && !workspace.workspaceTierCode) {
         workspace.workspaceTierCode = options.operator.workspaceTierCode;
       }
       await workspace.save();
@@ -228,7 +228,9 @@ export class DashboardService {
         badge: item.badge,
       });
     }
-    const navGroups = [...navGroupsMap.values()].sort((a, b) => a.sort - b.sort);
+    const navGroups = [...navGroupsMap.values()].sort(
+      (a, b) => a.sort - b.sort,
+    );
 
     const operator = options?.operator ?? null;
 
@@ -372,8 +374,14 @@ export class DashboardService {
         this.snapshotModel.findOne({ code: 'active', isActive: true }).lean(),
         this.metricModel.find({ isActive: true }).sort({ sortOrder: 1 }).lean(),
         this.stepModel.find({ isActive: true }).sort({ stepNumber: 1 }).lean(),
-        this.incidentModel.find({ isActive: true }).sort({ sortOrder: 1 }).lean(),
-        this.spatialModel.find({ isActive: true }).sort({ sortOrder: 1 }).lean(),
+        this.incidentModel
+          .find({ isActive: true })
+          .sort({ sortOrder: 1 })
+          .lean(),
+        this.spatialModel
+          .find({ isActive: true })
+          .sort({ sortOrder: 1 })
+          .lean(),
         this.getCopy('dashboard_empty'),
       ]);
 
@@ -389,9 +397,7 @@ export class DashboardService {
       'YOUR FACILITY // AWAITING INGEST';
     const geo = this.workspaceGeoLabel(workspace);
     const coordinates =
-      geo ||
-      copy.defaultCoordinates ||
-      'Add coordinates in Layer Calibration';
+      geo || copy.defaultCoordinates || 'Add coordinates in Layer Calibration';
 
     const { displayName, email } = this.operatorFromWorkspace(
       workspace,
@@ -434,10 +440,7 @@ export class DashboardService {
 
     const onboardingSteps = steps.map((s, idx) => ({
       stepNumber: s.stepNumber,
-      status:
-        idx === 0
-          ? ('active' as const)
-          : ('locked' as const),
+      status: idx === 0 ? ('active' as const) : ('locked' as const),
       statusLabel: idx === 0 ? 'START HERE' : 'LOCKED',
       title: s.title,
       body: s.body,
@@ -452,16 +455,20 @@ export class DashboardService {
       workspaceKey: workspace.workspaceKey,
       navGroups,
       snapshot: {
+        latitude: workspace.latitude ?? null,
+        longitude: workspace.longitude ?? null,
         facilityTitle,
         facilityStatus: copy.facilityStatus ?? 'SETUP COMPLETE',
         coordinates,
         altitude: copy.altitude ?? 'ALT —',
         spatialConfidence: copy.spatialConfidence ?? '0% Spatial Confidence',
         defconLabel: copy.defconLabel ?? 'DEFCON — // AWAITING FIRST INGEST',
-        onboardingStepLabel: copy.onboardingStepLabel ?? 'Facility Setup (Step 1/4)',
+        onboardingStepLabel:
+          copy.onboardingStepLabel ?? 'Facility Setup (Step 1/4)',
         onboardingStep: 1,
         onboardingTotal: 4,
-        onboardingEyebrow: copy.onboardingEyebrow ?? 'Next: ingest your facility',
+        onboardingEyebrow:
+          copy.onboardingEyebrow ?? 'Next: ingest your facility',
         onboardingBadge: copy.onboardingBadge ?? 'New Workspace',
         onboardingHeadline:
           copy.onboardingHeadline ?? 'Bring your first digital twin online',
@@ -486,7 +493,8 @@ export class DashboardService {
         brandSubtitle: template.brandSubtitle,
         alertCountLabel: '0 ALERTS',
         alertCount: 0,
-        twinEngineLabel: copy.twinEngineLabel ?? 'ENGINE: IDLE — NO MESH LOADED',
+        twinEngineLabel:
+          copy.twinEngineLabel ?? 'ENGINE: IDLE — NO MESH LOADED',
         twinLatency: '—',
         twinRaycasts: '0 Streams',
         twinTriangles: '0',
@@ -563,8 +571,26 @@ export class DashboardService {
       workspace.longitude = lng;
       const label = dto.locationLabel?.trim();
       workspace.locationLabel = label ?? '';
-      workspace.facilityLocation =
-        label || this.formatCoords(lat, lng);
+      workspace.facilityLocation = label || this.formatCoords(lat, lng);
+
+      const email = options?.operator?.email?.trim();
+      if (email) {
+        const user = await this.usersService.saveFacilityLocation(
+          email,
+          options?.operator?.workspaceTierCode ?? '',
+          {
+            facilityLocation: workspace.facilityLocation,
+            latitude: lat,
+            longitude: lng,
+            locationLabel: workspace.locationLabel,
+          },
+        );
+        if (!user) {
+          throw new NotFoundException(
+            'Your user account could not be found to save this location. Please sign in again.',
+          );
+        }
+      }
     }
 
     const completed = new Set(this.parseCsv(workspace.completedStepsCsv));

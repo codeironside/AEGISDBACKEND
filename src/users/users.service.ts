@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import {
-  AcceptedLegal,
-  User,
-  UserDocument,
-} from './schemas/user.schema';
+import { AcceptedLegal, User, UserDocument } from './schemas/user.schema';
 
 @Injectable()
 export class UsersService {
@@ -23,6 +19,30 @@ export class UsersService {
 
   findById(id: string) {
     return this.userModel.findById(id).exec();
+  }
+
+  async saveFacilityLocation(
+    email: string,
+    workspaceTierCode: string,
+    location: {
+      facilityLocation: string;
+      latitude: number;
+      longitude: number;
+      locationLabel: string;
+    },
+  ) {
+    return this.userModel
+      .findOneAndUpdate(
+        { email: email.toLowerCase() },
+        {
+          $set: location,
+          $setOnInsert: {
+            workspaceTierCode: workspaceTierCode.trim() || 'standard',
+          },
+        },
+        { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
+      )
+      .exec();
   }
 
   async upsertGoogleUser(input: {

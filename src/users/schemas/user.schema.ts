@@ -34,6 +34,18 @@ export class User {
   @Prop({ trim: true })
   avatarUrl?: string;
 
+  @Prop({ trim: true, default: '' })
+  facilityLocation!: string;
+
+  @Prop({ type: Number })
+  locationLatitude?: number;
+
+  @Prop({ type: Number })
+  locationLongitude?: number;
+
+  @Prop({ trim: true, default: '' })
+  locationLabel!: string;
+
   /** Flat reference to workspace_tiers.code */
   @Prop({ required: true, lowercase: true, trim: true })
   workspaceTierCode!: string;
